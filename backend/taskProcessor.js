@@ -159,24 +159,80 @@ async function processTask(task, isTest = false) {
 
     const parser = createParser();
     const feed = await parser.parseURL(task.feed);
-    const last = feed?.items?.[0];
-
-    if (!last) {
+    if (!feed?.items?.[0]) {
       return { success: false, skipped: true, message: "RSS 无内容" };
     }
 
-    const lastContent = last.guid || last.link;
-    const oldContent = task.last_content;
+    const normalizeContentId = (item) => {
+      if (!item) return "";
+      const candidates = [item.guid, item.id, item.link, item.isoDate, item.pubDate, item.title];
+      for (const value of candidates) {
+        const normalized = String(value || "").trim();
+        if (normalized) return normalized;
+      }
+      return "";
+    };
+
+    const getTaskSeenSet = (taskObj) => {
+      const seen = new Set();
+
+      if (taskObj.last_content) {
+        seen.add(String(taskObj.last_content).trim());
+      }
+
+      if (Array.isArray(taskObj.last_contents)) {
+        for (const value of taskObj.last_contents) {
+          const normalized = String(value || "").trim();
+          if (normalized) seen.add(normalized);
+        }
+      }
+
+      return seen;
+    };
+
+    const allItems = Array.isArray(feed?.items) ? feed.items : [];
+    const currentSeenSet = getTaskSeenSet(task);
+    const latestItem = allItems[0] || null;
+    const latestContentId = normalizeContentId(latestItem);
+    const latestTitle = String(latestItem?.title || "").trim();
+
+    const newItem = allItems.find((item) => {
+      const id = normalizeContentId(item);
+      if (!id) return false;
+      return !currentSeenSet.has(id);
+    });
 
     if (!isTest) {
+      const nextSeenSet = new Set(currentSeenSet);
+      if (latestContentId) {
+        nextSeenSet.add(latestContentId);
+      }
+
+      const maxHistory = 20;
+      const dedupedLatestIds = [];
+      for (const item of allItems) {
+        const id = normalizeContentId(item);
+        if (!id) continue;
+        if (dedupedLatestIds.includes(id)) continue;
+        dedupedLatestIds.push(id);
+        if (dedupedLatestIds.length >= maxHistory) break;
+      }
+
       task.last_time = dayjs().format("YYYY-MM-DD HH:mm:ss");
-      task.last_content = lastContent;
+      task.last_content = latestContentId || task.last_content || "";
+      task.last_contents = dedupedLatestIds;
     }
 
-    const shouldSend = isTest || (oldContent && oldContent !== lastContent);
-    if (!shouldSend) {
-      return { success: false, skipped: true, message: "没有新内容" };
+    const effectiveItem = newItem || (isTest ? latestItem : null);
+    if (!effectiveItem) {
+      return {
+        success: false,
+        skipped: true,
+        message: `没有新内容（latest=${latestContentId || "empty"}, seen=${currentSeenSet.size}, title=${latestTitle || "N/A"}）`,
+      };
     }
+
+    const last = effectiveItem;
 
     const keywordCheck = passKeywordFilter(task, last.title || "");
     if (!keywordCheck.pass) {
