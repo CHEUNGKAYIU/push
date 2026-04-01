@@ -52,10 +52,21 @@ function saveFilteredMessage(data) {
       list = [];
     }
   }
-  list.unshift({
+  const nextItem = {
     ...data,
     saved_at: dayjs().tz().format("YYYY-MM-DD HH:mm:ss"),
-  });
+  };
+  const identity = String(nextItem.content_id || nextItem.link || nextItem.title || "").trim();
+  if (identity) {
+    const index = list.findIndex((item) => {
+      const itemIdentity = String(item?.content_id || item?.link || item?.title || "").trim();
+      return String(item?.task_id || "") === String(nextItem.task_id || "") && itemIdentity === identity;
+    });
+    if (index >= 0) {
+      list.splice(index, 1);
+    }
+  }
+  list.unshift(nextItem);
   // 最多保存 500 条
   if (list.length > 500) list = list.slice(0, 500);
   fs.writeFileSync(FILTERED_FILE, JSON.stringify(list, null, 2));
@@ -272,8 +283,8 @@ async function processTask(task, isTest = false) {
 
     const c = new turndown();
     const hideTitle = parseInt(task.hide_title) > 0;
-    const text = hideTitle ? "" : `${last.title || "RSS 更新"}`;
-    const short = hideTitle ? "" : `${last.title || ""}`.substring(0, 64);
+    const text = hideTitle ? `${task.title || "RSS 更新"}` : `${last.title || "RSS 更新"}`;
+    const short = hideTitle ? `${task.title || ""}`.substring(0, 64) : `${last.title || ""}`.substring(0, 64);
     const out = last.content || "";
     // 构建正文，不再在开头加上 title，因为推送系统的 text 字段通常已经包含了 title
     // 这样可以避免出现“双标题”的问题
@@ -283,9 +294,11 @@ async function processTask(task, isTest = false) {
     const keywordCheck = passKeywordFilter(task, last.title || "");
     if (!keywordCheck.pass) {
       if (keywordCheck.action === "save_local") {
+        const contentId = normalizeContentId(last);
         saveFilteredMessage({
           task_id: task.id,
           task_title: task.title,
+          content_id: contentId,
           title: last.title,
           link: last.link,
           content: desp,
@@ -319,7 +332,7 @@ async function runAllTasks() {
   const tasks = loadTasks();
   let tasksUpdated = false;
 
-  console.log(`[poll] tick start, tasks=${tasks.length}, time=${new Date().toISOString()}`);
+  console.log(`[poll] tick start, tasks=${tasks.length}, time=${dayjs().tz().format("YYYY-MM-DD HH:mm:ss")}`);
 
   const summary = {
     total: tasks.length,

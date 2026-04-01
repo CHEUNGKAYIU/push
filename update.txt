@@ -27,3 +27,6 @@ docker-compose up --build -d
 - **查看容器状态**: `docker ps`
 - **过滤后的消息**: 存储在 `backend/data/filtered_messages.json`
 - **任务配置**: 存储在 `backend/data/tasks.json`
+
+清理构建缓存
+docker builder prune -f

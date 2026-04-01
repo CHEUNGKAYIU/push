@@ -78,12 +78,13 @@ app.all("/check",checkApiKey,(req,res)=>{
 });
 
 app.post("/task/add",checkApiKey,async (req,res)=>{
-    const { feed, keys, minutes, keyword, bad_keyword, translate, enabled } = req.body;
+    const { feed, keys, minutes, keyword, bad_keyword, enabled, hide_title } = req.body;
     if( !feed || !keys || !minutes ) return res.json({"code":400,"message":"参数错误"});
 
     let title = feed;
     let link = "";
     let enabledValue = normalizeEnabled(enabled, 1);
+    let hideTitleValue = normalizeEnabled(hide_title, 0);
     let checkFailed = false;
     // 验证 feed ，并获取标题
     try {
@@ -122,8 +123,24 @@ app.post("/task/add",checkApiKey,async (req,res)=>{
     
     // find exists feed and replace it
     const index = tasks.findIndex( item => item.feed == feed );
-    if( index >= 0 ) tasks[index] = { id, title, feed, keys, minutes, keyword, bad_keyword, translate, enabled: enabledValue };
-    else tasks.push( { id, title, link, feed, keys, minutes, keyword, bad_keyword, translate, enabled: enabledValue } );
+    if( index >= 0 ) {
+        const oldTask = tasks[index] || {};
+        const nextId = oldTask.id || id;
+        tasks[index] = {
+            ...oldTask,
+            id: nextId,
+            title,
+            link: oldTask.link || link,
+            feed,
+            keys,
+            minutes,
+            keyword,
+            bad_keyword,
+            hide_title: hideTitleValue,
+            enabled: enabledValue
+        };
+    }
+    else tasks.push( { id, title, link, feed, keys, minutes, keyword, bad_keyword, hide_title: hideTitleValue, enabled: enabledValue } );
 
     // unique array by feed
     const unique = [...new Map(tasks.map(item => [item.feed, item])).values()];
@@ -139,7 +156,7 @@ app.post("/task/add",checkApiKey,async (req,res)=>{
 });
 
 app.post("/task/modify",checkApiKey,async (req,res)=>{
-    const { id, feed, keys, minutes, keyword, bad_keyword, translate, enabled } = req.body;
+    const { id, feed, keys, minutes, keyword, bad_keyword, enabled, hide_title } = req.body;
     if( !id || !feed || !keys || !minutes ) return res.json({"code":400,"message":"参数错误"});
 
     // read tasks.json
@@ -163,10 +180,13 @@ app.post("/task/modify",checkApiKey,async (req,res)=>{
         const old_link = tasks[index].link||"";
         const old_last_time = tasks[index].last_time||"";
         const old_last_content = tasks[index].last_content||"";
+        const old_last_contents = tasks[index].last_contents||[];
+        const old_hide_title = normalizeEnabled(tasks[index].hide_title, 0);
         const old_enabled = normalizeEnabled(tasks[index].enabled, 1);
         const new_enabled = normalizeEnabled(enabled, old_enabled);
+        const new_hide_title = normalizeEnabled(hide_title, old_hide_title);
         
-        tasks[index] = { id, title:old_title,link:old_link,last_time:old_last_time,last_content:old_last_content,feed,keys,minutes, keyword, bad_keyword, translate, enabled: new_enabled};
+        tasks[index] = { id, title:old_title,link:old_link,last_time:old_last_time,last_content:old_last_content,last_contents:old_last_contents,feed,keys,minutes, keyword, bad_keyword, hide_title: new_hide_title, enabled: new_enabled};
     }
     else {
         return res.json({"code":404,"message":"任务不存在"});
@@ -264,7 +284,7 @@ app.post("/task/toggle",checkApiKey,async( req, res )=>{
 });
 
 app.post("/task/test", checkApiKey, async (req, res) => {
-    const { feed, keys, minutes, keyword, bad_keyword, translate } = req.body;
+    const { feed, keys, minutes, keyword, bad_keyword, hide_title } = req.body;
     if (!feed || !keys || !minutes) return res.json({ "code": 400, "message": "参数错误" });
 
     let title = feed;
@@ -291,7 +311,7 @@ app.post("/task/test", checkApiKey, async (req, res) => {
     const id = Math.random().toString(36).substr(2, 9);
 
     // 创建任务对象
-    const task = { id, title, link, feed, keys, minutes, keyword, bad_keyword, translate };
+    const task = { id, title, link, feed, keys, minutes, keyword, bad_keyword, hide_title };
 
     // 调用 processTask，测试模式下 isTest 为 true
     const result = await processTask(task, true);
