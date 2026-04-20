@@ -1,3 +1,7 @@
+notify-main/
+notify-main.zip
+backend-lite
+
 # Dependencies
 node_modules/
 **/node_modules/
